@@ -12,24 +12,26 @@ body {
   margin:0;
   padding:20px;
   color:#333;
+  line-height:1.5;
 }
 
 h1 {
   color:#003366;
   font-size:22px;
   text-align:center;
+  margin:0 0 10px;
 }
 
 p {
   text-align:center;
   font-size:13px;
   color:#666;
-  margin-bottom:20px;
+  margin:0 0 16px;
 }
 
 #searchInput {
   display:block;
-  margin:0 auto 14px;
+  margin:0 auto 10px;
   padding:10px 16px;
   width:90%;
   max-width:500px;
@@ -51,6 +53,7 @@ ul#mhtmlList {
   gap:16px;
   list-style:none;
   padding:0;
+  margin:0;
 }
 
 ul#mhtmlList li {
@@ -58,6 +61,7 @@ ul#mhtmlList li {
   border-radius:10px;
   padding:14px;
   box-shadow:0 2px 8px rgba(0,0,0,.05);
+  font-size:14px;
 }
 
 ul#mhtmlList li a {
@@ -74,7 +78,7 @@ ul#mhtmlList li a:hover {
 .file-date {
   margin-top:6px;
   font-size:12px;
-  color:#2e8b57; /* ✅ 绿色时间 */
+  color:#2e8b57; /* 绿色时间 */
 }
 
 #noResults {
@@ -104,123 +108,209 @@ ul#mhtmlList li a:hover {
   padding:6px 12px;
   font-size:13px;
   cursor:pointer;
+  box-shadow:0 2px 6px rgba(0,0,0,.2);
+}
+.scroll-buttons button:hover {
+  background:#005fa3;
 }
 </style>
 </head>
 
 <body>
+  <h1>Ada 的法律资料主页</h1>
+  <p>以下资料仅供学习研究使用，点击可直接打开。</p>
 
-<h1>Ada 的法律资料主页</h1>
-<p>以下资料仅供学习研究使用，点击可直接打开。</p>
+  <input id="searchInput" placeholder="🔍 根据标题搜索…" />
+  <div id="loading">正在加载，请稍候…</div>
 
-<input id="searchInput" placeholder="🔍 根据标题搜索…" />
-<div id="loading">正在加载，请稍候…</div>
+  <ul id="mhtmlList"></ul>
+  <div id="noResults">未找到相关内容</div>
 
-<ul id="mhtmlList"></ul>
-<div id="noResults">未找到相关内容</div>
-
-<!-- 返回顶部 / 底部 -->
-<div class="scroll-buttons">
-  <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑ 返回顶部</button>
-  <button onclick="window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })">↓ 跳到底部</button>
-</div>
+  <!-- 返回顶部 / 底部 -->
+  <div class="scroll-buttons">
+    <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑ 返回顶部</button>
+    <button onclick="window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })">↓ 跳到底部</button>
+  </div>
 
 <script>
-/* ========= 配置 ========= */
+/* ========= 基本配置 ========= */
 const owner  = "Ada-Ren";
 const repo   = "personal-legal-archive";
 const folder = "mhtml";
 const EXTS   = [".html",".pdf",".mhtml",".mht"];
 
-/* ========= 工具 ========= */
+/* 本地缓存配置：10 分钟刷新一次 GitHub 列表 */
+const CACHE_KEY      = "ada_mhtml_cache_v1";
+const CACHE_TIME_KEY = "ada_mhtml_cache_time_v1";
+const CACHE_TTL_MS   = 10 * 60 * 1000; // 10 分钟
+
+/* ========= 工具函数 ========= */
+
+// 文件名转标题（去掉后缀，下划线/中划线转空格）
 function filenameToTitle(name) {
   return name
-    .replace(/\.(html?|pdf|mhtml?)$/i,"")
-    .replace(/[_\-]+/g," ")
+    .replace(/\.(html?|pdf|mhtml?)$/i, "")
+    .replace(/[_\-]+/g, " ")
     .trim();
 }
 
-// ✅ 从文件名提取时间
+// 从文件名提取日期：支持 2025 / 2025-01 / 2025-01-31 / 202501 / 20250131 / 2025_01_31
 function extractDate(name) {
   const m = name.match(/(20\d{2})(?:[-_]?(\d{2}))?(?:[-_]?(\d{2}))?/);
   if (!m) return null;
 
-  const y = m[1];
+  const y  = m[1];
   const mo = m[2] || "01";
   const d  = m[3] || "01";
 
-  return {
-    text: m[0],                  // 展示用
-    key: `${y}${mo}${d}`         // 排序用
-  };
+  // 显示用：尽量还原原来的片段，比如 2025-01-03
+  const text = m[0];
+  const key  = `${y}${mo}${d}`; // 用于排序
+
+  return { text, key };
 }
 
-/* ========= 主逻辑 ========= */
-async function init() {
-  const loading = document.getElementById("loading");
+// 渲染列表
+function renderList(items) {
   const list    = document.getElementById("mhtmlList");
+  const loading = document.getElementById("loading");
   const noRes   = document.getElementById("noResults");
 
-  try {
-    /* ✅ 只调用 1 次 API */
-    const api = `https://api.github.com/repos/${owner}/${repo}/contents/${folder}`;
-    const res = await fetch(api);
-    if (!res.ok) throw new Error(res.status);
+  loading.style.display = "none";
+  list.innerHTML = "";
 
-    const data = await res.json();
+  if (!items.length) {
+    noRes.style.display = "block";
+    return;
+  }
+  noRes.style.display = "none";
 
-    let items = data
-      .filter(f => f.type === "file" && EXTS.some(ext => f.name.toLowerCase().endsWith(ext)))
-      .map(f => {
-        const date = extractDate(f.name);
-        return {
-          title: filenameToTitle(f.name),
-          dateText: date ? date.text : "未知时间",
-          dateKey:  date ? date.key : "00000000",
-          url: encodeURI(f.path)
-        };
-      });
+  // 排序：时间倒序 → 同一天按中文标题排序
+  items.sort((a, b) => {
+    if (a.dateKey !== b.dateKey) {
+      return b.dateKey.localeCompare(a.dateKey);
+    }
+    return a.title.localeCompare(b.title, "zh");
+  });
 
-    /* ✅ 排序：时间倒序 → 同时间按中文排序 */
-    items.sort((a,b) => {
-      if (a.dateKey !== b.dateKey) {
-        return b.dateKey.localeCompare(a.dateKey);
-      }
-      return a.title.localeCompare(b.title,"zh");
+  for (const it of items) {
+    const li = document.createElement("li");
+    li.dataset.search = (it.title + " " + it.dateText).toLowerCase();
+    li.innerHTML = `
+      🔖 <a href="${it.url}" target="_blank">${it.title}</a>
+      <div class="file-date">📅 ${it.dateText}</div>
+    `;
+    list.appendChild(li);
+  }
+}
+
+// 搜索逻辑
+function setupSearch() {
+  const input   = document.getElementById("searchInput");
+  const noRes   = document.getElementById("noResults");
+  const loading = document.getElementById("loading");
+
+  input.addEventListener("input", () => {
+    const kw = input.value.trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll("#mhtmlList li").forEach(li => {
+      const text = li.dataset.search || "";
+      const ok   = !kw || text.includes(kw);
+      li.style.display = ok ? "" : "none";
+      if (ok) shown++;
     });
-
-    loading.style.display = "none";
-
-    if (!items.length) {
-      noRes.style.display = "block";
-      return;
-    }
-
-    for (const it of items) {
-      const li = document.createElement("li");
-      li.dataset.search = it.title.toLowerCase();
-      li.innerHTML = `
-        🔖 <a href="${it.url}" target="_blank">${it.title}</a>
-        <div class="file-date">📅 ${it.dateText}</div>
-      `;
-      list.appendChild(li);
-    }
-
-    /* 搜索 */
-    document.getElementById("searchInput").addEventListener("input", e => {
-      const kw = e.target.value.trim().toLowerCase();
-      let shown = 0;
-      document.querySelectorAll("#mhtmlList li").forEach(li => {
-        const ok = !kw || li.dataset.search.includes(kw);
-        li.style.display = ok ? "" : "none";
-        if (ok) shown++;
-      });
+    if (loading.style.display === "none") {
       noRes.style.display = shown ? "none" : "block";
+    }
+  });
+}
+
+// 把 items 存到本地缓存
+function saveCache(items) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(items));
+    localStorage.setItem(CACHE_TIME_KEY, String(Date.now()));
+  } catch (e) {
+    console.warn("无法写入 localStorage：", e);
+  }
+}
+
+// 从缓存读取
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    const ts  = localStorage.getItem(CACHE_TIME_KEY);
+    if (!raw || !ts) return null;
+    const items = JSON.parse(raw);
+    if (!Array.isArray(items)) return null;
+    return { items, ts: Number(ts) };
+  } catch (e) {
+    console.warn("读取缓存失败：", e);
+    return null;
+  }
+}
+
+/* ========= GitHub API 部分（只调用一次）========= */
+async function fetchFromGitHub() {
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${folder}`;
+  const res = await fetch(api);
+  if (!res.ok) throw new Error("GitHub API error " + res.status);
+
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error("GitHub 返回的不是数组");
+
+  const items = data
+    .filter(f =>
+      f.type === "file" &&
+      EXTS.some(ext => f.name.toLowerCase().endsWith(ext))
+    )
+    .map(f => {
+      const date = extractDate(f.name);
+      return {
+        title: filenameToTitle(f.name),
+        dateText: date ? date.text : "未知时间",
+        dateKey:  date ? date.key  : "00000000",
+        url: encodeURI(f.path)
+      };
     });
 
+  return items;
+}
+
+/* ========= 初始化流程 ========= */
+async function init() {
+  const loading = document.getElementById("loading");
+  setupSearch();
+
+  // 1. 先试着用缓存，让页面立刻有内容
+  const cached = loadCache();
+  const now    = Date.now();
+
+  if (cached && Array.isArray(cached.items)) {
+    renderList(cached.items);
+    // 如果缓存不算太旧（< 10 分钟），直接用缓存，不立刻打 API
+    if (now - cached.ts < CACHE_TTL_MS) {
+      loading.textContent = "已加载本地缓存列表";
+      return;
+    } else {
+      loading.textContent = "正在尝试从 GitHub 更新最新列表…";
+    }
+  }
+
+  // 2. 缓存没有或太旧，再尝试打 GitHub API
+  try {
+    const items = await fetchFromGitHub();
+    renderList(items);
+    saveCache(items);
+    loading.textContent = "列表已从 GitHub 更新";
   } catch (e) {
     console.error(e);
-    loading.innerText = "加载失败，请稍后重试";
+    // 如果有旧缓存，维持现状，只提醒一下
+    if (cached && Array.isArray(cached.items)) {
+      loading.textContent = "GitHub 限额或网络异常，当前显示的是上次缓存的列表";
+    } else {
+      loading.textContent = "加载失败，请稍后重试";
+    }
   }
 }
 

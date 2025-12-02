@@ -98,37 +98,12 @@
 /* ========= 基本配置 ========= */
 const owner = "Ada-Ren";
 const repo  = "personal-legal-archive";
-const rootFolder = "mhtml";
+const folder = "mhtml";
 
 /* 支持的文件类型 */
 const EXTS = [".html", ".pdf", ".mhtml", ".mht"];
 
-/* ========= GitHub API ========= */
-async function fetchDir(path) {
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("GitHub API error: " + res.status);
-  return res.json();
-}
-
-async function walkFolder(path) {
-  const entries = await fetchDir(path);
-  let files = [];
-
-  for (const item of entries) {
-    if (item.type === "dir") {
-      files = files.concat(await walkFolder(item.path));
-    } else if (
-      item.type === "file" &&
-      EXTS.some(ext => item.name.toLowerCase().endsWith(ext))
-    ) {
-      files.push(item);
-    }
-  }
-  return files;
-}
-
-/* ========= 文件名 → 显示标题 ========= */
+/* ========= 工具 ========= */
 function filenameToTitle(name) {
   return name
     .replace(/\.(html?|pdf|mhtml?)$/i, "")
@@ -136,60 +111,62 @@ function filenameToTitle(name) {
     .trim();
 }
 
-/* ========= 渲染 ========= */
-function render(items) {
-  const list = document.getElementById("mhtmlList");
-  const loading = document.getElementById("loading");
-  const noRes = document.getElementById("noResults");
-
-  loading.style.display = "none";
-  list.innerHTML = "";
-
-  if (!items.length) {
-    noRes.style.display = "block";
-    return;
-  }
-
-  items.sort((a,b)=>a.title.localeCompare(b.title,"zh"));
-
-  for (const it of items) {
-    const li = document.createElement("li");
-    li.dataset.search = it.title.toLowerCase();
-    li.innerHTML = `🔖 <a href="${it.url}" target="_blank">${it.title}</a>`;
-    list.appendChild(li);
-  }
-}
-
-/* ========= 搜索 ========= */
-function setupSearch() {
-  const input = document.getElementById("searchInput");
-  const noRes = document.getElementById("noResults");
-
-  input.addEventListener("input", () => {
-    const kw = input.value.trim().toLowerCase();
-    let shown = 0;
-    document.querySelectorAll("#mhtmlList li").forEach(li=>{
-      const ok = !kw || li.dataset.search.includes(kw);
-      li.style.display = ok ? "" : "none";
-      if (ok) shown++;
-    });
-    noRes.style.display = shown ? "none" : "block";
-  });
-}
-
-/* ========= 启动 ========= */
+/* ========= 主逻辑 ========= */
 async function init() {
+  const loading = document.getElementById("loading");
+  const list    = document.getElementById("mhtmlList");
+  const noRes   = document.getElementById("noResults");
+
   try {
-    const files = await walkFolder(rootFolder);
-    const items = files.map(f=>({
-      title: filenameToTitle(f.name),
-      url: f.path
-    }));
-    render(items);
-    setupSearch();
-  } catch (e) {
-    document.getElementById("loading").innerText = "加载失败，请稍后重试";
-    console.error(e);
+    const api = `https://api.github.com/repos/${owner}/${repo}/contents/${folder}`;
+    const res = await fetch(api);
+    if (!res.ok) throw new Error("GitHub API error " + res.status);
+
+    const data = await res.json();
+
+    const files = data.filter(
+      f => f.type === "file" &&
+           EXTS.some(ext => f.name.toLowerCase().endsWith(ext))
+    );
+
+    loading.style.display = "none";
+    list.innerHTML = "";
+
+    if (!files.length) {
+      noRes.style.display = "block";
+      return;
+    }
+
+    const items = files
+      .map(f => ({
+        title: filenameToTitle(f.name),
+        url: f.path
+      }))
+      .sort((a, b) => a.title.localeCompare(b.title, "zh"));
+
+    for (const it of items) {
+      const li = document.createElement("li");
+      li.dataset.search = it.title.toLowerCase();
+      li.innerHTML = `🔖 <a href="${it.url}" target="_blank">${it.title}</a>`;
+      list.appendChild(li);
+    }
+
+    // 搜索
+    document.getElementById("searchInput")
+      .addEventListener("input", e => {
+        const kw = e.target.value.trim().toLowerCase();
+        let shown = 0;
+        document.querySelectorAll("#mhtmlList li").forEach(li => {
+          const ok = !kw || li.dataset.search.includes(kw);
+          li.style.display = ok ? "" : "none";
+          if (ok) shown++;
+        });
+        noRes.style.display = shown ? "none" : "block";
+      });
+
+  } catch (err) {
+    console.error(err);
+    loading.innerText = "加载失败，请稍后重试";
   }
 }
 

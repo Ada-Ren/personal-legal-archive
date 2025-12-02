@@ -47,6 +47,7 @@ p {
   margin-bottom:10px;
 }
 
+/* 列表整体是网格布局 */
 ul#mhtmlList {
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
@@ -62,6 +63,18 @@ ul#mhtmlList li {
   padding:14px;
   box-shadow:0 2px 8px rgba(0,0,0,.05);
   font-size:14px;
+}
+
+/* 分组标题：占满整行 */
+ul#mhtmlList li.group-header {
+  grid-column:1 / -1;
+  background:transparent;
+  box-shadow:none;
+  padding:4px 2px;
+  font-size:13px;
+  font-weight:600;
+  color:#555;
+  border-left:4px solid #007acc;
 }
 
 ul#mhtmlList li a {
@@ -140,37 +153,56 @@ const folder = "mhtml";
 const EXTS   = [".html",".pdf",".mhtml",".mht"];
 
 /* 本地缓存配置：10 分钟刷新一次 GitHub 列表 */
-const CACHE_KEY      = "ada_mhtml_cache_v1";
-const CACHE_TIME_KEY = "ada_mhtml_cache_time_v1";
+const CACHE_KEY      = "ada_mhtml_cache_v2";
+const CACHE_TIME_KEY = "ada_mhtml_cache_time_v2";
 const CACHE_TTL_MS   = 10 * 60 * 1000; // 10 分钟
 
 /* ========= 工具函数 ========= */
 
-// 文件名转标题（去掉后缀，下划线/中划线转空格）
+// 文件名转标题：去掉后缀 + 去掉前缀日期 + 替换下划线/中划线为空格
 function filenameToTitle(name) {
-  return name
-    .replace(/\.(html?|pdf|mhtml?)$/i, "")
+  // 去掉扩展名
+  let base = name.replace(/\.(html?|pdf|mhtml?)$/i, "");
+
+  // 去掉文件名前缀的日期部分（例如 "20250101 " / "2025-01-01_" 等）
+  base = base.replace(
+    /^(20\d{2}(?:[-_]?(\d{2}))?(?:[-_]?(\d{2}))?)[\s_\-]*/,
+    ""
+  );
+
+  // 剩下的当作标题
+  return base
     .replace(/[_\-]+/g, " ")
     .trim();
 }
 
 // 从文件名提取日期：支持 2025 / 2025-01 / 2025-01-31 / 202501 / 20250131 / 2025_01_31
 function extractDate(name) {
-  const m = name.match(/(20\d{2})(?:[-_]?(\d{2}))?(?:[-_]?(\d{2}))?/);
+  const m = name.match(/^(20\d{2})(?:[-_]?(\d{2}))?(?:[-_]?(\d{2}))?/);
   if (!m) return null;
 
   const y  = m[1];
   const mo = m[2] || "01";
   const d  = m[3] || "01";
 
-  // 显示用：尽量还原原来的片段，比如 2025-01-03
-  const text = m[0];
-  const key  = `${y}${mo}${d}`; // 用于排序
+  // 显示用：更友好一点
+  let text;
+  if (m[3]) {
+    text = `${y}-${mo}-${d}`;
+  } else if (m[2]) {
+    text = `${y}-${mo}`;
+  } else {
+    text = y;
+  }
 
-  return { text, key };
+  const key = `${y}${mo}${d}`;        // 细粒度排序用
+  const groupKey = `${y}${mo}`;      // 年月分组用
+  const groupLabel = `${y.slice(2)}年${parseInt(mo,10)}月`;  // 如「25年1月」
+
+  return { text, key, groupKey, groupLabel };
 }
 
-// 渲染列表
+// 渲染列表 + 年月分组
 function renderList(items) {
   const list    = document.getElementById("mhtmlList");
   const loading = document.getElementById("loading");
@@ -185,40 +217,89 @@ function renderList(items) {
   }
   noRes.style.display = "none";
 
-  // 排序：时间倒序 → 同一天按中文标题排序
-  items.sort((a, b) => {
-    if (a.dateKey !== b.dateKey) {
-      return b.dateKey.localeCompare(a.dateKey);
+  // 先按 groupKey 归组
+  const groups = {};
+  for (const it of items) {
+    const gKey   = it.dateGroupKey || "000000"; // 未知日期组
+    const gLabel = it.dateGroupLabel || "未知日期";
+
+    if (!groups[gKey]) {
+      groups[gKey] = { label: gLabel, items: [] };
     }
-    return a.title.localeCompare(b.title, "zh");
+    groups[gKey].items.push(it);
+  }
+
+  // 分组排序：按年月倒序，未知日期放最后
+  const groupKeys = Object.keys(groups).sort((a, b) => {
+    if (a === "000000") return 1;
+    if (b === "000000") return -1;
+    return b.localeCompare(a);
   });
 
-  for (const it of items) {
-    const li = document.createElement("li");
-    li.dataset.search = (it.title + " " + it.dateText).toLowerCase();
-    li.innerHTML = `
-      🔖 <a href="${it.url}" target="_blank">${it.title}</a>
-      <div class="file-date">📅 ${it.dateText}</div>
-    `;
-    list.appendChild(li);
+  // 渲染：每个组一个 group-header + 该组内所有条目
+  for (const gKey of groupKeys) {
+    const group = groups[gKey];
+
+    // 分组标题
+    const headerLi = document.createElement("li");
+    headerLi.className = "group-header";
+    headerLi.dataset.group = gKey;
+    headerLi.textContent = group.label;
+    list.appendChild(headerLi);
+
+    // 组内排序：先按 dateKey 再按标题（同一天按中文标题）
+    group.items.sort((a, b) => {
+      if (a.dateKey !== b.dateKey) {
+        return b.dateKey.localeCompare(a.dateKey);
+      }
+      return a.title.localeCompare(b.title, "zh");
+    });
+
+    // 组内文件
+    for (const it of group.items) {
+      const li = document.createElement("li");
+      li.dataset.group  = gKey;
+      li.dataset.search = (it.title + " " + it.dateText).toLowerCase();
+      li.innerHTML = `
+        🔖 <a href="${it.url}" target="_blank">${it.title}</a>
+        <div class="file-date">${it.dateText}</div>
+      `;
+      list.appendChild(li);
+    }
   }
 }
 
-// 搜索逻辑
+// 搜索逻辑：隐藏/显示文件，同时按组判断是否隐藏分组标题
 function setupSearch() {
-  const input   = document.getElementById("searchInput");
-  const noRes   = document.getElementById("noResults");
+  const input = document.getElementById("searchInput");
+  const noRes = document.getElementById("noResults");
   const loading = document.getElementById("loading");
 
   input.addEventListener("input", () => {
     const kw = input.value.trim().toLowerCase();
     let shown = 0;
+    const groupVisibleCount = {};
+
+    // 先处理文件项（非 group-header）
     document.querySelectorAll("#mhtmlList li").forEach(li => {
-      const text = li.dataset.search || "";
-      const ok   = !kw || text.includes(kw);
+      if (li.classList.contains("group-header")) return;
+
+      const text  = li.dataset.search || "";
+      const ok    = !kw || text.includes(kw);
       li.style.display = ok ? "" : "none";
-      if (ok) shown++;
+      if (ok) {
+        shown++;
+        const g = li.dataset.group;
+        groupVisibleCount[g] = (groupVisibleCount[g] || 0) + 1;
+      }
     });
+
+    // 再根据每组是否有可见文件，控制组标题显示/隐藏
+    document.querySelectorAll("#mhtmlList li.group-header").forEach(header => {
+      const g = header.dataset.group;
+      header.style.display = groupVisibleCount[g] ? "" : "none";
+    });
+
     if (loading.style.display === "none") {
       noRes.style.display = shown ? "none" : "block";
     }
@@ -267,10 +348,12 @@ async function fetchFromGitHub() {
     .map(f => {
       const date = extractDate(f.name);
       return {
-        title: filenameToTitle(f.name),
-        dateText: date ? date.text : "未知时间",
+        title: filenameToTitle(f.name),                 // ✅ 标题不含日期
+        dateText: date ? date.text : "未知时间",         // ✅ 底下绿色小字
         dateKey:  date ? date.key  : "00000000",
-        url: encodeURI(f.path)
+        dateGroupKey:   date ? date.groupKey   : "000000",
+        dateGroupLabel: date ? date.groupLabel : "未知日期",
+        url: encodeURI(f.path)                          // 兼容中文路径
       };
     });
 
@@ -282,13 +365,12 @@ async function init() {
   const loading = document.getElementById("loading");
   setupSearch();
 
-  // 1. 先试着用缓存，让页面立刻有内容
+  // 1. 先用缓存，让页面尽快有内容
   const cached = loadCache();
   const now    = Date.now();
 
   if (cached && Array.isArray(cached.items)) {
     renderList(cached.items);
-    // 如果缓存不算太旧（< 10 分钟），直接用缓存，不立刻打 API
     if (now - cached.ts < CACHE_TTL_MS) {
       loading.textContent = "已加载本地缓存列表";
       return;
@@ -297,7 +379,7 @@ async function init() {
     }
   }
 
-  // 2. 缓存没有或太旧，再尝试打 GitHub API
+  // 2. 缓存没有或过期时，再打 GitHub API
   try {
     const items = await fetchFromGitHub();
     renderList(items);
@@ -305,7 +387,6 @@ async function init() {
     loading.textContent = "列表已从 GitHub 更新";
   } catch (e) {
     console.error(e);
-    // 如果有旧缓存，维持现状，只提醒一下
     if (cached && Array.isArray(cached.items)) {
       loading.textContent = "GitHub 限额或网络异常，当前显示的是上次缓存的列表";
     } else {

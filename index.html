@@ -65,16 +65,19 @@ ul#mhtmlList li {
   font-size:14px;
 }
 
-/* 分组标题：占满整行 */
+/* 分组标题美化 */
 ul#mhtmlList li.group-header {
-  grid-column:1 / -1;
-  background:transparent;
-  box-shadow:none;
-  padding:4px 2px;
-  font-size:13px;
-  font-weight:600;
-  color:#555;
-  border-left:4px solid #007acc;
+  grid-column: 1 / -1;            /* 横跨整行 */
+  background: #eaf4ff;            /* 柔和浅蓝背景 */
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #003d73;                 /* 深一点的蓝字 */
+  border-left: 4px solid #007acc; /* 左侧蓝色竖条 */
+  border-bottom: 1px solid #ddd;  /* 底部分割线 */
+  border-radius: 4px;
+  margin-top: 8px;
+  box-shadow: none;               /* 不要卡片阴影 */
 }
 
 ul#mhtmlList li a {

@@ -1,0 +1,33 @@
+name: Generate index.json
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "mhtml/**"          # 仅当你上传或修改 mhtml 时触发
+      - ".github/scripts/generate-index.js"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
+
+    - name: Generate index.json
+      run: |
+        node .github/scripts/generate-index.js
+
+    - name: Commit & push index.json
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git add index.json
+        git commit -m "Auto-update index.json" || echo "No changes to commit"
+        git push

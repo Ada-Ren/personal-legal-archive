@@ -30,14 +30,13 @@
 
     #searchInput {
       display: block;
-      margin: 0 auto 20px;
+      margin: 0 auto 16px;
       padding: 10px 16px;
       width: 90%;
       max-width: 500px;
       border: 1px solid #ccc;
       border-radius: 24px;
       font-size: 14px;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
     }
 
     #loading {
@@ -61,21 +60,13 @@
       border-radius: 10px;
       padding: 14px;
       font-size: 14px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-      transition: all 0.2s ease;
-      box-sizing: border-box;
-    }
-
-    ul#mhtmlList li:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,.05);
     }
 
     ul#mhtmlList li a {
-      font-weight: 600;
       color: #007acc;
+      font-weight: 600;
       text-decoration: none;
-      font-size: 14px;
       word-break: break-all;
     }
 
@@ -83,226 +74,126 @@
       text-decoration: underline;
     }
 
-    .file-meta {
-      margin-top: 6px;
-      font-size: 12px;
-      color: #999;
-    }
-
     #noResults {
       display: none;
+      text-align: center;
+      font-size: 13px;
       color: #888;
       margin-top: 20px;
-      font-size: 14px;
-      text-align: center;
-    }
-
-    .scroll-buttons {
-      position: fixed;
-      right: 20px;
-      bottom: 40px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      z-index: 999;
-    }
-
-    .scroll-buttons button {
-      background-color: #007acc;
-      color: white;
-      border: none;
-      border-radius: 20px;
-      padding: 6px 12px;
-      font-size: 13px;
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-      transition: background-color 0.2s ease;
-    }
-
-    .scroll-buttons button:hover {
-      background-color: #005fa3;
     }
   </style>
 </head>
+
 <body>
   <h1>Ada 的法律资料主页</h1>
-  <p>以下资料仅供学习研究使用，点击链接可直接预览。</p>
+  <p>以下资料仅供学习研究使用，点击可直接打开。</p>
 
-  <input type="text" id="searchInput" placeholder="🔍 根据标题搜索保存的网页..." />
-  <div id="loading">正在加载文件列表，请稍候...</div>
+  <input id="searchInput" placeholder="🔍 根据文件名搜索…" />
+  <div id="loading">正在加载，请稍候…</div>
 
   <ul id="mhtmlList"></ul>
   <div id="noResults">未找到相关内容</div>
 
-  <!-- 返回顶部 / 底部按钮 -->
-  <div class="scroll-buttons">
-    <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' });">↑ 返回顶部</button>
-    <button onclick="window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });">↓ 跳转到底部</button>
-  </div>
+<script>
+/* ========= 基本配置 ========= */
+const owner = "Ada-Ren";
+const repo  = "personal-legal-archive";
+const rootFolder = "mhtml";
 
-  <script>
-    // ⚠️ 改成你的真实用户名和仓库名 ⚠️
-    const owner      = "Ada-Ren";                // GitHub 用户名
-    const repo       = "personal-legal-archive"; // 仓库名
-    const rootFolder = "mhtml";                  // 存放文件的根目录
+/* 支持的文件类型 */
+const EXTS = [".html", ".pdf", ".mhtml", ".mht"];
 
-    // 支持的扩展名
-    const extsAll       = [".html", ".mhtml", ".mht", ".pdf"];
-    const extsNeedTitle = [".html", ".mhtml", ".mht"];
+/* ========= GitHub API ========= */
+async function fetchDir(path) {
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("GitHub API error: " + res.status);
+  return res.json();
+}
 
-    // 读取某个目录（相对仓库根路径，如 "mhtml" 或 "mhtml/Guide"）
-    async function fetchDir(path) {
-      const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-      const res = await fetch(apiUrl);
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("GitHub API 请求失败：", path, res.status, text);
-        throw new Error("GitHub API 请求失败：" + res.status);
-      }
-      const data = await res.json();
-      if (!Array.isArray(data)) {
-        throw new Error("GitHub API 返回的不是数组：" + typeof data);
-      }
-      return data;
+async function walkFolder(path) {
+  const entries = await fetchDir(path);
+  let files = [];
+
+  for (const item of entries) {
+    if (item.type === "dir") {
+      files = files.concat(await walkFolder(item.path));
+    } else if (
+      item.type === "file" &&
+      EXTS.some(ext => item.name.toLowerCase().endsWith(ext))
+    ) {
+      files.push(item);
     }
+  }
+  return files;
+}
 
-    // 递归遍历目录，收集所有符合扩展名的文件
-    async function walkFolder(path) {
-      const entries = await fetchDir(path);
-      let files = [];
+/* ========= 文件名 → 显示标题 ========= */
+function filenameToTitle(name) {
+  return name
+    .replace(/\.(html?|pdf|mhtml?)$/i, "")
+    .replace(/[_\-]+/g, " ")
+    .trim();
+}
 
-      for (const item of entries) {
-        if (item.type === "dir") {
-          const subFiles = await walkFolder(item.path);
-          files = files.concat(subFiles);
-        } else if (item.type === "file") {
-          const lower = item.name.toLowerCase();
-          if (extsAll.some(ext => lower.endsWith(ext))) {
-            files.push(item); // item.path 如 "mhtml/Guide/index000.html"
-          }
-        }
-      }
-      return files;
-    }
+/* ========= 渲染 ========= */
+function render(items) {
+  const list = document.getElementById("mhtmlList");
+  const loading = document.getElementById("loading");
+  const noRes = document.getElementById("noResults");
 
-    // 从 html/mhtml 中提取 <title>
-    async function extractTitleFromFile(path) {
-      try {
-        const res = await fetch(path);
-        if (!res.ok) {
-          console.warn("获取文件失败：", path, res.status);
-          return null;
-        }
-        const text = await res.text();
-        const match = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-        if (match && match[1]) {
-          return match[1].trim();
-        }
-      } catch (e) {
-        console.error("解析标题失败：", path, e);
-      }
-      return null;
-    }
+  loading.style.display = "none";
+  list.innerHTML = "";
 
-    // 用文件名兜底标题
-    function filenameToTitle(name) {
-      return name
-        .replace(/\.(html|pdf|mhtml|mht)$/i, "")
-        .replace(/[_\-]+/g, " ")
-        .trim();
-    }
+  if (!items.length) {
+    noRes.style.display = "block";
+    return;
+  }
 
-    function renderList(items) {
-      const listEl   = document.getElementById("mhtmlList");
-      const loading  = document.getElementById("loading");
-      const noResult = document.getElementById("noResults");
+  items.sort((a,b)=>a.title.localeCompare(b.title,"zh"));
 
-      loading.style.display = "none";
-      listEl.innerHTML = "";
+  for (const it of items) {
+    const li = document.createElement("li");
+    li.dataset.search = it.title.toLowerCase();
+    li.innerHTML = `🔖 <a href="${it.url}" target="_blank">${it.title}</a>`;
+    list.appendChild(li);
+  }
+}
 
-      if (!items.length) {
-        noResult.style.display = "block";
-        return;
-      } else {
-        noResult.style.display = "none";
-      }
+/* ========= 搜索 ========= */
+function setupSearch() {
+  const input = document.getElementById("searchInput");
+  const noRes = document.getElementById("noResults");
 
-      // 按标题排序（拼音/字典序）
-      items.sort((a, b) => a.title.localeCompare(b.title, "zh"));
+  input.addEventListener("input", () => {
+    const kw = input.value.trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll("#mhtmlList li").forEach(li=>{
+      const ok = !kw || li.dataset.search.includes(kw);
+      li.style.display = ok ? "" : "none";
+      if (ok) shown++;
+    });
+    noRes.style.display = shown ? "none" : "block";
+  });
+}
 
-      items.forEach(item => {
-        const li = document.createElement("li");
-        li.dataset.searchText = item.title.toLowerCase();
+/* ========= 启动 ========= */
+async function init() {
+  try {
+    const files = await walkFolder(rootFolder);
+    const items = files.map(f=>({
+      title: filenameToTitle(f.name),
+      url: f.path
+    }));
+    render(items);
+    setupSearch();
+  } catch (e) {
+    document.getElementById("loading").innerText = "加载失败，请稍后重试";
+    console.error(e);
+  }
+}
 
-        li.innerHTML = `
-          🔖 <a href="${item.url}" target="_blank">${item.title}</a>
-        `;
-        listEl.appendChild(li);
-      });
-    }
-
-    function setupSearch() {
-      const input     = document.getElementById("searchInput");
-      const noResults = document.getElementById("noResults");
-      const loading   = document.getElementById("loading");
-
-      input.addEventListener("input", () => {
-        const keyword = input.value.trim().toLowerCase();
-        const items   = Array.from(document.querySelectorAll("#mhtmlList li"));
-        let visibleCount = 0;
-
-        items.forEach(li => {
-          const text  = li.dataset.searchText || "";
-          const match = !keyword || text.includes(keyword);
-          li.style.display = match ? "" : "none";
-          if (match) visibleCount++;
-        });
-
-        if (loading.style.display === "none") {
-          noResults.style.display = visibleCount === 0 ? "block" : "none";
-        }
-      });
-    }
-
-    async function init() {
-      const loading = document.getElementById("loading");
-      loading.style.display = "block";
-
-      try {
-        const files = await walkFolder(rootFolder);
-
-        const items = await Promise.all(
-          files.map(async f => {
-            const lower = f.name.toLowerCase();
-            const path  = f.path; // 如 "mhtml/index000.html" 或 "mhtml/Guide/index000.html"
-
-            let title = null;
-            if (extsNeedTitle.some(ext => lower.endsWith(ext))) {
-              title = await extractTitleFromFile(path);
-            }
-            if (!title) {
-              title = filenameToTitle(f.name);
-            }
-
-            return {
-              title,
-              url: path
-            };
-          })
-        );
-
-        renderList(items);
-        setupSearch();
-      } catch (err) {
-        console.error("初始化出错：", err);
-        const noResults = document.getElementById("noResults");
-        loading.style.display = "none";
-        noResults.style.display = "block";
-        noResults.textContent = "加载文件列表失败，请稍后重试。";
-      }
-    }
-
-    document.addEventListener("DOMContentLoaded", init);
-  </script>
+document.addEventListener("DOMContentLoaded", init);
+</script>
 </body>
 </html>

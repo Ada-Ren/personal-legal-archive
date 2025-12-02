@@ -142,7 +142,7 @@
 
   <script>
     // ⚠️ 改成你的真实用户名和仓库名 ⚠️
-    const owner      = "Ada-Ren";                // 你的 GitHub 用户名
+    const owner      = "Ada-Ren";                // GitHub 用户名
     const repo       = "personal-legal-archive"; // 仓库名
     const rootFolder = "mhtml";                  // 存放文件的根目录
 
@@ -150,84 +150,7 @@
     const extsAll       = [".html", ".mhtml", ".mht", ".pdf"];
     const extsNeedTitle = [".html", ".mhtml", ".mht"];
 
-    // localStorage 缓存设置
-    const CACHE_KEY     = "ada-law-commit-cache-v1";
-    const CACHE_TTL_MS  = 24 * 60 * 60 * 1000; // 24 小时
-
-    // 读取缓存
-    function loadCache() {
-      try {
-        const raw = localStorage.getItem(CACHE_KEY);
-        if (!raw) return {};
-        const data = JSON.parse(raw);
-        if (typeof data === "object" && data !== null) return data;
-      } catch (e) {
-        console.warn("读取缓存失败：", e);
-      }
-      return {};
-    }
-
-    // 保存缓存
-    function saveCache(cache) {
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-      } catch (e) {
-        console.warn("写入缓存失败：", e);
-      }
-    }
-
-    // 获取缓存中的时间（如果未过期）
-    function getCachedDate(cache, path) {
-      const entry = cache[path];
-      if (!entry) return null;
-      if (!entry.date || !entry.fetchedAt) return null;
-      const age = Date.now() - entry.fetchedAt;
-      if (age > CACHE_TTL_MS) return null; // 过期
-      return entry.date;
-    }
-
-    // 设置缓存
-    function setCachedDate(cache, path, isoString) {
-      cache[path] = {
-        date: isoString,
-        fetchedAt: Date.now()
-      };
-    }
-
-    // 获取文件最近一次提交时间（带缓存）
-    async function fetchFileCommitTimeWithCache(path, cache) {
-      const cached = getCachedDate(cache, path);
-      if (cached) return cached;
-
-      try {
-        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&page=1&per_page=1`;
-        const res = await fetch(apiUrl);
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (Array.isArray(data) && data[0]?.commit?.author?.date) {
-          const iso = data[0].commit.author.date;
-          setCachedDate(cache, path, iso);
-          return iso;
-        }
-      } catch (e) {
-        console.warn("读取提交时间失败：", path, e);
-      }
-      return null;
-    }
-
-    // 友好的日期显示
-    function formatDate(isoString) {
-      if (!isoString) return "";
-      const d = new Date(isoString);
-      if (Number.isNaN(d.getTime())) return "";
-      return d.toLocaleDateString("zh-CN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-      });
-    }
-
-    // 读取某个目录（相对仓库根路径，例如 "mhtml" 或 "mhtml/Guide"）
+    // 读取某个目录（相对仓库根路径，如 "mhtml" 或 "mhtml/Guide"）
     async function fetchDir(path) {
       const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
       const res = await fetch(apiUrl);
@@ -255,7 +178,7 @@
         } else if (item.type === "file") {
           const lower = item.name.toLowerCase();
           if (extsAll.some(ext => lower.endsWith(ext))) {
-            files.push(item); // item.path 形如 "mhtml/Guide/index000.html"
+            files.push(item); // item.path 如 "mhtml/Guide/index000.html"
           }
         }
       }
@@ -304,14 +227,8 @@
         noResult.style.display = "none";
       }
 
-      // 按时间倒序排序（最近更新时间在最上面）
-      items.sort((a, b) => {
-        // 没有时间的放最后
-        if (a.sortTime === b.sortTime) {
-          return a.title.localeCompare(b.title, "zh");
-        }
-        return b.sortTime - a.sortTime;
-      });
+      // 按标题排序（拼音/字典序）
+      items.sort((a, b) => a.title.localeCompare(b.title, "zh"));
 
       items.forEach(item => {
         const li = document.createElement("li");
@@ -319,10 +236,6 @@
 
         li.innerHTML = `
           🔖 <a href="${item.url}" target="_blank">${item.title}</a>
-          <div class="file-meta">
-            ${item.fileName}
-            ${item.displayDate ? " · " + item.displayDate : ""}
-          </div>
         `;
         listEl.appendChild(li);
       });
@@ -345,7 +258,6 @@
           if (match) visibleCount++;
         });
 
-        // 只有在加载完成后才根据搜索结果显示“未找到”
         if (loading.style.display === "none") {
           noResults.style.display = visibleCount === 0 ? "block" : "none";
         }
@@ -355,8 +267,6 @@
     async function init() {
       const loading = document.getElementById("loading");
       loading.style.display = "block";
-
-      let cache = loadCache();
 
       try {
         const files = await walkFolder(rootFolder);
@@ -374,22 +284,12 @@
               title = filenameToTitle(f.name);
             }
 
-            const commitIso = await fetchFileCommitTimeWithCache(path, cache);
-            const sortTime  = commitIso ? new Date(commitIso).getTime() : 0;
-            const displayDate = commitIso ? formatDate(commitIso) : "";
-
             return {
-              fileName: f.path,   // 显示完整路径
               title,
-              url: path,
-              sortTime,
-              displayDate
+              url: path
             };
           })
         );
-
-        // 所有 commit 时间获取完毕后再统一写回缓存
-        saveCache(cache);
 
         renderList(items);
         setupSearch();

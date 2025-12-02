@@ -25,12 +25,12 @@
       text-align: center;
       font-size: 13px;
       color: #666;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
     }
 
     #searchInput {
       display: block;
-      margin: 0 auto 30px;
+      margin: 0 auto 20px;
       padding: 10px 16px;
       width: 90%;
       max-width: 500px;
@@ -38,6 +38,13 @@
       border-radius: 24px;
       font-size: 14px;
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
+
+    #loading {
+      text-align: center;
+      font-size: 13px;
+      color: #999;
+      margin-bottom: 10px;
     }
 
     ul#mhtmlList {
@@ -119,156 +126,283 @@
 </head>
 <body>
   <h1>Ada 的法律资料主页</h1>
-  <p>以下资料仅供学习研究使用，点击链接可直接预览：</p>
+  <p>以下资料仅供学习研究使用，点击链接可直接预览。</p>
 
   <input type="text" id="searchInput" placeholder="🔍 根据标题搜索保存的网页..." />
+  <div id="loading">正在加载文件列表，请稍候...</div>
 
   <ul id="mhtmlList"></ul>
   <div id="noResults">未找到相关内容</div>
 
-  <!-- 返回顶部 / 底部按钮，可选 -->
+  <!-- 返回顶部 / 底部按钮 -->
   <div class="scroll-buttons">
     <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' });">↑ 返回顶部</button>
     <button onclick="window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });">↓ 跳转到底部</button>
   </div>
 
-<script>
-  // 这里用你的真实用户名和仓库名
-  const owner  = "Ada-Ren";
-  const repo   = "personal-legal-archive";
-  const folder = "mhtml";
+  <script>
+    // ⚠️ 改成你的真实用户名和仓库名 ⚠️
+    const owner      = "Ada-Ren";                // 你的 GitHub 用户名
+    const repo       = "personal-legal-archive"; // 仓库名
+    const rootFolder = "mhtml";                  // 存放文件的根目录
 
-  // 需要支持的所有扩展名
-  const extsAll = [".html", ".mhtml", ".mht", ".pdf"];
-  // 需要尝试从内容里读 <title> 的扩展名
-  const extsNeedTitle = [".html", ".mhtml", ".mht"];
+    // 支持的扩展名
+    const extsAll       = [".html", ".mhtml", ".mht", ".pdf"];
+    const extsNeedTitle = [".html", ".mhtml", ".mht"];
 
-  async function fetchMHTMLList() {
-    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(folder)}`;
-    const res = await fetch(apiUrl);
-    console.log("GitHub API status:", res.status);
-    if (!res.ok) {
-      // 在控制台打印更多信息，方便排查
-      const text = await res.text();
-      console.error("GitHub API 请求失败，响应：", text);
-      throw new Error("GitHub API 请求失败：" + res.status);
+    // localStorage 缓存设置
+    const CACHE_KEY     = "ada-law-commit-cache-v1";
+    const CACHE_TTL_MS  = 24 * 60 * 60 * 1000; // 24 小时
+
+    // 读取缓存
+    function loadCache() {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return {};
+        const data = JSON.parse(raw);
+        if (typeof data === "object" && data !== null) return data;
+      } catch (e) {
+        console.warn("读取缓存失败：", e);
+      }
+      return {};
     }
-    const data = await res.json();
-    console.log("GitHub API 返回数据：", data);
-    // 防御性判断：确保 data 是数组
-    if (!Array.isArray(data)) {
-      throw new Error("GitHub API 返回的不是数组，而是：" + typeof data);
-    }
-    return data;
-  }
 
-  // 从 html/mhtml 中提取 <title>
-  async function extractTitleFromFile(path) {
-    try {
-      const res = await fetch(path);
+    // 保存缓存
+    function saveCache(cache) {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+      } catch (e) {
+        console.warn("写入缓存失败：", e);
+      }
+    }
+
+    // 获取缓存中的时间（如果未过期）
+    function getCachedDate(cache, path) {
+      const entry = cache[path];
+      if (!entry) return null;
+      if (!entry.date || !entry.fetchedAt) return null;
+      const age = Date.now() - entry.fetchedAt;
+      if (age > CACHE_TTL_MS) return null; // 过期
+      return entry.date;
+    }
+
+    // 设置缓存
+    function setCachedDate(cache, path, isoString) {
+      cache[path] = {
+        date: isoString,
+        fetchedAt: Date.now()
+      };
+    }
+
+    // 获取文件最近一次提交时间（带缓存）
+    async function fetchFileCommitTimeWithCache(path, cache) {
+      const cached = getCachedDate(cache, path);
+      if (cached) return cached;
+
+      try {
+        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&page=1&per_page=1`;
+        const res = await fetch(apiUrl);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (Array.isArray(data) && data[0]?.commit?.author?.date) {
+          const iso = data[0].commit.author.date;
+          setCachedDate(cache, path, iso);
+          return iso;
+        }
+      } catch (e) {
+        console.warn("读取提交时间失败：", path, e);
+      }
+      return null;
+    }
+
+    // 友好的日期显示
+    function formatDate(isoString) {
+      if (!isoString) return "";
+      const d = new Date(isoString);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      });
+    }
+
+    // 读取某个目录（相对仓库根路径，例如 "mhtml" 或 "mhtml/Guide"）
+    async function fetchDir(path) {
+      const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+      const res = await fetch(apiUrl);
       if (!res.ok) {
-        console.warn("获取文件失败：", path, res.status);
-        return null;
+        const text = await res.text();
+        console.error("GitHub API 请求失败：", path, res.status, text);
+        throw new Error("GitHub API 请求失败：" + res.status);
       }
-      const text = await res.text();
-      const match = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      if (match && match[1]) {
-        return match[1].trim();
+      const data = await res.json();
+      if (!Array.isArray(data)) {
+        throw new Error("GitHub API 返回的不是数组：" + typeof data);
       }
-    } catch (e) {
-      console.error("解析标题失败：", path, e);
+      return data;
     }
-    return null;
-  }
 
-  // 用文件名兜底标题
-  function filenameToTitle(name) {
-    return name
-      .replace(/\.(html|pdf|mhtml|mht)$/i, "")
-      .replace(/[_\-]+/g, " ")
-      .trim();
-  }
+    // 递归遍历目录，收集所有符合扩展名的文件
+    async function walkFolder(path) {
+      const entries = await fetchDir(path);
+      let files = [];
 
-  function renderList(items) {
-    const listEl = document.getElementById("mhtmlList");
-    listEl.innerHTML = "";
+      for (const item of entries) {
+        if (item.type === "dir") {
+          const subFiles = await walkFolder(item.path);
+          files = files.concat(subFiles);
+        } else if (item.type === "file") {
+          const lower = item.name.toLowerCase();
+          if (extsAll.some(ext => lower.endsWith(ext))) {
+            files.push(item); // item.path 形如 "mhtml/Guide/index000.html"
+          }
+        }
+      }
+      return files;
+    }
 
-    items.sort((a, b) => a.title.localeCompare(b.title, "zh"));
+    // 从 html/mhtml 中提取 <title>
+    async function extractTitleFromFile(path) {
+      try {
+        const res = await fetch(path);
+        if (!res.ok) {
+          console.warn("获取文件失败：", path, res.status);
+          return null;
+        }
+        const text = await res.text();
+        const match = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (match && match[1]) {
+          return match[1].trim();
+        }
+      } catch (e) {
+        console.error("解析标题失败：", path, e);
+      }
+      return null;
+    }
 
-    items.forEach(item => {
-      const li = document.createElement("li");
-      li.dataset.searchText = item.title.toLowerCase();
-      li.innerHTML = `
-        🔖 <a href="${item.url}" target="_blank">${item.title}</a>
-        <div class="file-meta">${item.fileName}</div>
-      `;
-      listEl.appendChild(li);
-    });
-  }
+    // 用文件名兜底标题
+    function filenameToTitle(name) {
+      return name
+        .replace(/\.(html|pdf|mhtml|mht)$/i, "")
+        .replace(/[_\-]+/g, " ")
+        .trim();
+    }
 
-  function setupSearch() {
-    const input = document.getElementById("searchInput");
-    const noResults = document.getElementById("noResults");
+    function renderList(items) {
+      const listEl   = document.getElementById("mhtmlList");
+      const loading  = document.getElementById("loading");
+      const noResult = document.getElementById("noResults");
 
-    input.addEventListener("input", () => {
-      const keyword = input.value.trim().toLowerCase();
-      const items = Array.from(document.querySelectorAll("#mhtmlList li"));
-      let visibleCount = 0;
+      loading.style.display = "none";
+      listEl.innerHTML = "";
 
-      items.forEach(li => {
-        const text = li.dataset.searchText || "";
-        const match = !keyword || text.includes(keyword);
-        li.style.display = match ? "" : "none";
-        if (match) visibleCount++;
+      if (!items.length) {
+        noResult.style.display = "block";
+        return;
+      } else {
+        noResult.style.display = "none";
+      }
+
+      // 按时间倒序排序（最近更新时间在最上面）
+      items.sort((a, b) => {
+        // 没有时间的放最后
+        if (a.sortTime === b.sortTime) {
+          return a.title.localeCompare(b.title, "zh");
+        }
+        return b.sortTime - a.sortTime;
       });
 
-      noResults.style.display = visibleCount === 0 ? "block" : "none";
-    });
-  }
+      items.forEach(item => {
+        const li = document.createElement("li");
+        li.dataset.searchText = item.title.toLowerCase();
 
-  async function init() {
-    try {
-      const rawFiles = await fetchMHTMLList();
-
-      // 过滤出我们关心的扩展名
-      const files = rawFiles.filter(f =>
-        extsAll.some(ext => f.name.toLowerCase().endsWith(ext))
-      );
-      console.log("筛选后的文件：", files);
-
-      const items = await Promise.all(
-        files.map(async f => {
-          const lower = f.name.toLowerCase();
-          const encodedName = encodeURIComponent(f.name);
-          const relativePath = `${folder}/${encodedName}`;
-
-          let title = null;
-          if (extsNeedTitle.some(ext => lower.endsWith(ext))) {
-            title = await extractTitleFromFile(relativePath);
-          }
-          if (!title) {
-            title = filenameToTitle(f.name);
-          }
-
-          return {
-            fileName: f.name,
-            title,
-            url: `${folder}/${f.name}` // href 用原始文件名，浏览器会自动编码
-          };
-        })
-      );
-
-      renderList(items);
-      setupSearch();
-    } catch (err) {
-      console.error("初始化出错：", err);
-      const noResults = document.getElementById("noResults");
-      noResults.style.display = "block";
-      noResults.textContent = "加载 mhtml 列表失败，请稍后重试。";
+        li.innerHTML = `
+          🔖 <a href="${item.url}" target="_blank">${item.title}</a>
+          <div class="file-meta">
+            ${item.fileName}
+            ${item.displayDate ? " · " + item.displayDate : ""}
+          </div>
+        `;
+        listEl.appendChild(li);
+      });
     }
-  }
 
-  document.addEventListener("DOMContentLoaded", init);
-</script>
+    function setupSearch() {
+      const input     = document.getElementById("searchInput");
+      const noResults = document.getElementById("noResults");
+      const loading   = document.getElementById("loading");
+
+      input.addEventListener("input", () => {
+        const keyword = input.value.trim().toLowerCase();
+        const items   = Array.from(document.querySelectorAll("#mhtmlList li"));
+        let visibleCount = 0;
+
+        items.forEach(li => {
+          const text  = li.dataset.searchText || "";
+          const match = !keyword || text.includes(keyword);
+          li.style.display = match ? "" : "none";
+          if (match) visibleCount++;
+        });
+
+        // 只有在加载完成后才根据搜索结果显示“未找到”
+        if (loading.style.display === "none") {
+          noResults.style.display = visibleCount === 0 ? "block" : "none";
+        }
+      });
+    }
+
+    async function init() {
+      const loading = document.getElementById("loading");
+      loading.style.display = "block";
+
+      let cache = loadCache();
+
+      try {
+        const files = await walkFolder(rootFolder);
+
+        const items = await Promise.all(
+          files.map(async f => {
+            const lower = f.name.toLowerCase();
+            const path  = f.path; // 如 "mhtml/index000.html" 或 "mhtml/Guide/index000.html"
+
+            let title = null;
+            if (extsNeedTitle.some(ext => lower.endsWith(ext))) {
+              title = await extractTitleFromFile(path);
+            }
+            if (!title) {
+              title = filenameToTitle(f.name);
+            }
+
+            const commitIso = await fetchFileCommitTimeWithCache(path, cache);
+            const sortTime  = commitIso ? new Date(commitIso).getTime() : 0;
+            const displayDate = commitIso ? formatDate(commitIso) : "";
+
+            return {
+              fileName: f.path,   // 显示完整路径
+              title,
+              url: path,
+              sortTime,
+              displayDate
+            };
+          })
+        );
+
+        // 所有 commit 时间获取完毕后再统一写回缓存
+        saveCache(cache);
+
+        renderList(items);
+        setupSearch();
+      } catch (err) {
+        console.error("初始化出错：", err);
+        const noResults = document.getElementById("noResults");
+        loading.style.display = "none";
+        noResults.style.display = "block";
+        noResults.textContent = "加载文件列表失败，请稍后重试。";
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", init);
+  </script>
 </body>
 </html>

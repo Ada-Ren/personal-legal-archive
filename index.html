@@ -6,57 +6,151 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
 <style>
-/* 保留你全部的样式 */
 body {
   font-family: "Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
   background:#f2f4f7;
+  margin:0;
   padding:20px;
   color:#333;
+  line-height:1.5;
 }
-h1 { color:#003366; font-size:22px; text-align:center; margin:0 0 10px; }
-p { text-align:center; font-size:13px; color:#666; margin:0 0 16px; }
-#searchInput { display:block; margin:0 auto 10px; padding:10px 16px; width:90%; max-width:500px; border:1px solid #ccc; border-radius:24px; font-size:14px; }
-#loading { text-align:center; font-size:13px; color:#999; margin-bottom:10px; }
-ul#mhtmlList { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; list-style:none; margin:0; padding:0; }
-ul#mhtmlList li { background:#fff; border-radius:10px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,.05); font-size:14px; }
-ul#mhtmlList li.group-header { grid-column:1 / -1; background:transparent; box-shadow:none; padding:4px 2px; font-size:13px; font-weight:600; color:#555; border-left:4px solid #007acc; }
-ul#mhtmlList li a { color:#007acc; font-weight:600; text-decoration:none; word-break:break-all; }
-.file-date { margin-top:6px; font-size:12px; color:#2e8b57; }
-#noResults { display:none; text-align:center; margin-top:20px; font-size:13px; color:#888; }
-.scroll-buttons { position:fixed; right:20px; bottom:40px; display:flex; flex-direction:column; gap:10px; z-index:999; }
-.scroll-buttons button { background:#007acc; color:white; border:none; border-radius:20px; padding:6px 12px; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.2); }
+
+h1 {
+  color:#003366;
+  font-size:22px;
+  text-align:center;
+  margin:0 0 10px;
+}
+
+p {
+  text-align:center;
+  font-size:13px;
+  color:#666;
+  margin:0 0 16px;
+}
+
+#searchInput {
+  display:block;
+  margin:0 auto 10px;
+  padding:10px 16px;
+  width:90%;
+  max-width:500px;
+  border:1px solid #ccc;
+  border-radius:24px;
+  font-size:14px;
+}
+
+#loading {
+  text-align:center;
+  font-size:13px;
+  color:#999;
+  margin-bottom:10px;
+}
+
+/* 列表整体是网格布局 */
+ul#mhtmlList {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+  gap:16px;
+  list-style:none;
+  padding:0;
+  margin:0;
+}
+
+ul#mhtmlList li {
+  background:#fff;
+  border-radius:10px;
+  padding:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
+  font-size:14px;
+}
+
+/* 分组标题：占满整行 */
+ul#mhtmlList li.group-header {
+  grid-column:1 / -1;
+  background:transparent;
+  box-shadow:none;
+  padding:4px 2px;
+  font-size:13px;
+  font-weight:600;
+  color:#555;
+  border-left:4px solid #007acc;
+}
+
+ul#mhtmlList li a {
+  color:#007acc;
+  font-weight:600;
+  text-decoration:none;
+  word-break:break-all;
+}
+
+ul#mhtmlList li a:hover {
+  text-decoration:underline;
+}
+
+.file-date {
+  margin-top:6px;
+  font-size:12px;
+  color:#2e8b57; /* 绿色时间 */
+}
+
+#noResults {
+  display:none;
+  text-align:center;
+  font-size:13px;
+  color:#888;
+  margin-top:20px;
+}
+
+/* 返回顶部 / 底部按钮 */
+.scroll-buttons {
+  position:fixed;
+  right:20px;
+  bottom:40px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  z-index:999;
+}
+
+.scroll-buttons button {
+  background:#007acc;
+  color:white;
+  border:none;
+  border-radius:20px;
+  padding:6px 12px;
+  font-size:13px;
+  cursor:pointer;
+  box-shadow:0 2px 6px rgba(0,0,0,.2);
+}
+.scroll-buttons button:hover {
+  background:#005fa3;
+}
 </style>
 </head>
 
 <body>
+  <h1>Ada 的法律资料主页</h1>
+  <p>以下资料仅供学习研究使用，点击可直接打开。</p>
 
-<h1>Ada 的法律资料主页</h1>
-<p>以下资料仅供学习研究使用，点击可直接打开。</p>
+  <input id="searchInput" placeholder="🔍 根据标题或日期搜索…" />
+  <div id="loading">正在加载，请稍候…</div>
 
-<input id="searchInput" placeholder="🔍 根据标题搜索…" />
-<div id="loading">正在加载，请稍候…</div>
+  <ul id="mhtmlList"></ul>
+  <div id="noResults">未找到相关内容</div>
 
-<ul id="mhtmlList"></ul>
-<div id="noResults">未找到相关内容</div>
-
-<div class="scroll-buttons">
-  <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑ 返回顶部</button>
-  <button onclick="window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })">↓ 跳到底部</button>
-</div>
+  <!-- 返回顶部 / 底部 -->
+  <div class="scroll-buttons">
+    <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑ 返回顶部</button>
+    <button onclick="window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })">↓ 跳到底部</button>
+  </div>
 
 <script>
-// ⭐⭐ 只改动这里：数据来源从 API → index.json ⭐⭐
-async function loadData() {
-  const res = await fetch("index.json");
-  if (!res.ok) throw new Error("无法加载 index.json");
-  return res.json();
-}
-
-// === 以下逻辑保持你的全部原功能 ===
+// 渲染分组列表
 function renderList(items) {
-  const list = document.getElementById("mhtmlList");
+  const list    = document.getElementById("mhtmlList");
   const loading = document.getElementById("loading");
-  const noRes = document.getElementById("noResults");
+  const noRes   = document.getElementById("noResults");
 
   loading.style.display = "none";
   list.innerHTML = "";
@@ -65,35 +159,48 @@ function renderList(items) {
     noRes.style.display = "block";
     return;
   }
+  noRes.style.display = "none";
 
+  // 先按 groupKey 归组
   const groups = {};
   for (const it of items) {
-    const key = it.dateGroupKey;
-    if (!groups[key]) groups[key] = { label: it.dateGroupLabel, items: [] };
-    groups[key].items.push(it);
+    const gKey   = it.dateGroupKey || "000000";
+    const gLabel = it.dateGroupLabel || "未知日期";
+    if (!groups[gKey]) {
+      groups[gKey] = { label: gLabel, items: [] };
+    }
+    groups[gKey].items.push(it);
   }
 
-  const groupKeys = Object.keys(groups).sort((a,b)=>{
+  // 分组排序：年月倒序，未知日期最后
+  const groupKeys = Object.keys(groups).sort((a, b) => {
     if (a === "000000") return 1;
     if (b === "000000") return -1;
     return b.localeCompare(a);
   });
 
-  for (const g of groupKeys) {
-    const header = document.createElement("li");
-    header.className = "group-header";
-    header.dataset.group = g;
-    header.textContent = groups[g].label;
-    list.appendChild(header);
+  for (const gKey of groupKeys) {
+    const group = groups[gKey];
 
-    groups[g].items.sort((a,b)=>{
-      if (a.dateKey !== b.dateKey) return b.dateKey.localeCompare(a.dateKey);
-      return a.title.localeCompare(b.title,"zh");
+    // 组标题
+    const headerLi = document.createElement("li");
+    headerLi.className = "group-header";
+    headerLi.dataset.group = gKey;
+    headerLi.textContent = group.label;
+    list.appendChild(headerLi);
+
+    // 组内排序：时间倒序 + 标题拼音序
+    group.items.sort((a, b) => {
+      if (a.dateKey !== b.dateKey) {
+        return b.dateKey.localeCompare(a.dateKey);
+      }
+      return a.title.localeCompare(b.title, "zh");
     });
 
-    for (const it of groups[g].items) {
+    // 组内文件
+    for (const it of group.items) {
       const li = document.createElement("li");
-      li.dataset.group = g;
+      li.dataset.group  = gKey;
       li.dataset.search = (it.title + " " + it.dateText).toLowerCase();
       li.innerHTML = `
         🔖 <a href="${it.url}" target="_blank">${it.title}</a>
@@ -104,41 +211,59 @@ function renderList(items) {
   }
 }
 
+// 搜索逻辑
 function setupSearch() {
-  const input = document.getElementById("searchInput");
-  const noRes = document.getElementById("noResults");
+  const input   = document.getElementById("searchInput");
+  const noRes   = document.getElementById("noResults");
+  const loading = document.getElementById("loading");
 
   input.addEventListener("input", () => {
     const kw = input.value.trim().toLowerCase();
     let shown = 0;
-    const groupShown = {};
+    const groupVisibleCount = {};
 
     document.querySelectorAll("#mhtmlList li").forEach(li => {
       if (li.classList.contains("group-header")) return;
 
-      const ok = !kw || li.dataset.search.includes(kw);
+      const text = li.dataset.search || "";
+      const ok   = !kw || text.includes(kw);
       li.style.display = ok ? "" : "none";
       if (ok) {
         shown++;
-        groupShown[li.dataset.group] = true;
+        const g = li.dataset.group;
+        groupVisibleCount[g] = (groupVisibleCount[g] || 0) + 1;
       }
     });
 
-    document.querySelectorAll("#mhtmlList li.group-header").forEach(h=>{
-      h.style.display = groupShown[h.dataset.group] ? "" : "none";
+    // 控制组标题显示
+    document.querySelectorAll("#mhtmlList li.group-header").forEach(header => {
+      const g = header.dataset.group;
+      header.style.display = groupVisibleCount[g] ? "" : "none";
     });
 
-    noRes.style.display = shown ? "none" : "block";
+    if (loading.style.display === "none") {
+      noRes.style.display = shown ? "none" : "block";
+    }
   });
 }
 
+// 初始化：只读本地 index.json，不打 GitHub API
 async function init() {
+  const loading = document.getElementById("loading");
+  loading.textContent = "正在读取 index.json…";
+
   try {
-    const items = await loadData();
+    const res = await fetch("index.json?_=" + Date.now());
+    if (!res.ok) throw new Error("读取 index.json 失败：" + res.status);
+    const items = await res.json();
+    if (!Array.isArray(items)) {
+      throw new Error("index.json 格式不正确");
+    }
     renderList(items);
     setupSearch();
   } catch (e) {
-    document.getElementById("loading").innerText = "加载失败，请稍后重试";
+    console.error(e);
+    loading.textContent = "加载失败，请稍后重试（index.json 无法读取）";
   }
 }
 

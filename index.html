@@ -1,114 +1,158 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-  <meta charset="UTF-8" />
-  <title>Ada 的法律资料主页</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>
-    body {
-      font-family: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
-      background-color: #f2f4f7;
-      margin: 0;
-      padding: 20px;
-      color: #333;
-      line-height: 1.5;
-    }
+<meta charset="UTF-8" />
+<title>Ada 的法律资料主页</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    h1 {
-      color: #003366;
-      font-size: 22px;
-      margin-bottom: 10px;
-      text-align: center;
-    }
+<style>
+body {
+  font-family: "Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  background:#f2f4f7;
+  margin:0;
+  padding:20px;
+  color:#333;
+}
 
-    p {
-      text-align: center;
-      font-size: 13px;
-      color: #666;
-      margin-bottom: 20px;
-    }
+h1 {
+  color:#003366;
+  font-size:22px;
+  text-align:center;
+}
 
-    #searchInput {
-      display: block;
-      margin: 0 auto 16px;
-      padding: 10px 16px;
-      width: 90%;
-      max-width: 500px;
-      border: 1px solid #ccc;
-      border-radius: 24px;
-      font-size: 14px;
-    }
+p {
+  text-align:center;
+  font-size:13px;
+  color:#666;
+  margin-bottom:20px;
+}
 
-    #loading {
-      text-align: center;
-      font-size: 13px;
-      color: #999;
-      margin-bottom: 10px;
-    }
+#searchInput {
+  display:block;
+  margin:0 auto 14px;
+  padding:10px 16px;
+  width:90%;
+  max-width:500px;
+  border:1px solid #ccc;
+  border-radius:24px;
+  font-size:14px;
+}
 
-    ul#mhtmlList {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-      padding: 0;
-      margin: 0;
-      list-style: none;
-    }
+#loading {
+  text-align:center;
+  font-size:13px;
+  color:#999;
+  margin-bottom:10px;
+}
 
-    ul#mhtmlList li {
-      background: #fff;
-      border-radius: 10px;
-      padding: 14px;
-      font-size: 14px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.05);
-    }
+ul#mhtmlList {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+  gap:16px;
+  list-style:none;
+  padding:0;
+}
 
-    ul#mhtmlList li a {
-      color: #007acc;
-      font-weight: 600;
-      text-decoration: none;
-      word-break: break-all;
-    }
+ul#mhtmlList li {
+  background:#fff;
+  border-radius:10px;
+  padding:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
 
-    ul#mhtmlList li a:hover {
-      text-decoration: underline;
-    }
+ul#mhtmlList li a {
+  color:#007acc;
+  font-weight:600;
+  text-decoration:none;
+  word-break:break-all;
+}
 
-    #noResults {
-      display: none;
-      text-align: center;
-      font-size: 13px;
-      color: #888;
-      margin-top: 20px;
-    }
-  </style>
+ul#mhtmlList li a:hover {
+  text-decoration:underline;
+}
+
+.file-date {
+  margin-top:6px;
+  font-size:12px;
+  color:#2e8b57; /* ✅ 绿色时间 */
+}
+
+#noResults {
+  display:none;
+  text-align:center;
+  font-size:13px;
+  color:#888;
+  margin-top:20px;
+}
+
+/* 返回顶部 / 底部按钮 */
+.scroll-buttons {
+  position:fixed;
+  right:20px;
+  bottom:40px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  z-index:999;
+}
+
+.scroll-buttons button {
+  background:#007acc;
+  color:white;
+  border:none;
+  border-radius:20px;
+  padding:6px 12px;
+  font-size:13px;
+  cursor:pointer;
+}
+</style>
 </head>
 
 <body>
-  <h1>Ada 的法律资料主页</h1>
-  <p>以下资料仅供学习研究使用，点击可直接打开。</p>
 
-  <input id="searchInput" placeholder="🔍 根据文件名搜索…" />
-  <div id="loading">正在加载，请稍候…</div>
+<h1>Ada 的法律资料主页</h1>
+<p>以下资料仅供学习研究使用，点击可直接打开。</p>
 
-  <ul id="mhtmlList"></ul>
-  <div id="noResults">未找到相关内容</div>
+<input id="searchInput" placeholder="🔍 根据标题搜索…" />
+<div id="loading">正在加载，请稍候…</div>
+
+<ul id="mhtmlList"></ul>
+<div id="noResults">未找到相关内容</div>
+
+<!-- 返回顶部 / 底部 -->
+<div class="scroll-buttons">
+  <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑ 返回顶部</button>
+  <button onclick="window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })">↓ 跳到底部</button>
+</div>
 
 <script>
-/* ========= 基本配置 ========= */
-const owner = "Ada-Ren";
-const repo  = "personal-legal-archive";
+/* ========= 配置 ========= */
+const owner  = "Ada-Ren";
+const repo   = "personal-legal-archive";
 const folder = "mhtml";
-
-/* 支持的文件类型 */
-const EXTS = [".html", ".pdf", ".mhtml", ".mht"];
+const EXTS   = [".html",".pdf",".mhtml",".mht"];
 
 /* ========= 工具 ========= */
 function filenameToTitle(name) {
   return name
-    .replace(/\.(html?|pdf|mhtml?)$/i, "")
-    .replace(/[_\-]+/g, " ")
+    .replace(/\.(html?|pdf|mhtml?)$/i,"")
+    .replace(/[_\-]+/g," ")
     .trim();
+}
+
+// ✅ 从文件名提取时间
+function extractDate(name) {
+  const m = name.match(/(20\d{2})(?:[-_]?(\d{2}))?(?:[-_]?(\d{2}))?/);
+  if (!m) return null;
+
+  const y = m[1];
+  const mo = m[2] || "01";
+  const d  = m[3] || "01";
+
+  return {
+    text: m[0],                  // 展示用
+    key: `${y}${mo}${d}`         // 排序用
+  };
 }
 
 /* ========= 主逻辑 ========= */
@@ -118,54 +162,64 @@ async function init() {
   const noRes   = document.getElementById("noResults");
 
   try {
+    /* ✅ 只调用 1 次 API */
     const api = `https://api.github.com/repos/${owner}/${repo}/contents/${folder}`;
     const res = await fetch(api);
-    if (!res.ok) throw new Error("GitHub API error " + res.status);
+    if (!res.ok) throw new Error(res.status);
 
     const data = await res.json();
 
-    const files = data.filter(
-      f => f.type === "file" &&
-           EXTS.some(ext => f.name.toLowerCase().endsWith(ext))
-    );
+    let items = data
+      .filter(f => f.type === "file" && EXTS.some(ext => f.name.toLowerCase().endsWith(ext)))
+      .map(f => {
+        const date = extractDate(f.name);
+        return {
+          title: filenameToTitle(f.name),
+          dateText: date ? date.text : "未知时间",
+          dateKey:  date ? date.key : "00000000",
+          url: encodeURI(f.path)
+        };
+      });
+
+    /* ✅ 排序：时间倒序 → 同时间按中文排序 */
+    items.sort((a,b) => {
+      if (a.dateKey !== b.dateKey) {
+        return b.dateKey.localeCompare(a.dateKey);
+      }
+      return a.title.localeCompare(b.title,"zh");
+    });
 
     loading.style.display = "none";
-    list.innerHTML = "";
 
-    if (!files.length) {
+    if (!items.length) {
       noRes.style.display = "block";
       return;
     }
 
-    const items = files
-      .map(f => ({
-        title: filenameToTitle(f.name),
-        url: f.path
-      }))
-      .sort((a, b) => a.title.localeCompare(b.title, "zh"));
-
     for (const it of items) {
       const li = document.createElement("li");
       li.dataset.search = it.title.toLowerCase();
-      li.innerHTML = `🔖 <a href="${it.url}" target="_blank">${it.title}</a>`;
+      li.innerHTML = `
+        🔖 <a href="${it.url}" target="_blank">${it.title}</a>
+        <div class="file-date">📅 ${it.dateText}</div>
+      `;
       list.appendChild(li);
     }
 
-    // 搜索
-    document.getElementById("searchInput")
-      .addEventListener("input", e => {
-        const kw = e.target.value.trim().toLowerCase();
-        let shown = 0;
-        document.querySelectorAll("#mhtmlList li").forEach(li => {
-          const ok = !kw || li.dataset.search.includes(kw);
-          li.style.display = ok ? "" : "none";
-          if (ok) shown++;
-        });
-        noRes.style.display = shown ? "none" : "block";
+    /* 搜索 */
+    document.getElementById("searchInput").addEventListener("input", e => {
+      const kw = e.target.value.trim().toLowerCase();
+      let shown = 0;
+      document.querySelectorAll("#mhtmlList li").forEach(li => {
+        const ok = !kw || li.dataset.search.includes(kw);
+        li.style.display = ok ? "" : "none";
+        if (ok) shown++;
       });
+      noRes.style.display = shown ? "none" : "block";
+    });
 
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
+    console.error(e);
     loading.innerText = "加载失败，请稍后重试";
   }
 }
